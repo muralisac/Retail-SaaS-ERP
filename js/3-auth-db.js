@@ -1,10 +1,8 @@
 // js/3-auth-db.js
 
-auth.onAuthStateChanged(user => {
+auth.onAuthStateChanged(async user => {
     if (user) {
         const userEmail = user.email.toLowerCase();
-        isAdmin = ADMIN_EMAILS.includes(userEmail);
-        isStockiest = STOCKIEST_EMAILS.includes(userEmail);
         
         document.body.classList.remove('login-mode'); 
         document.body.classList.add('auth-mode');
@@ -12,16 +10,57 @@ auth.onAuthStateChanged(user => {
         document.getElementById('app-header').style.display = 'flex'; 
         document.getElementById('screen-login').classList.remove('active'); 
         document.getElementById('loading-overlay').style.display = 'flex';
+        document.getElementById('loading-text').innerText = "Identifying Store Profile...";
         
-        if (isAdmin) document.getElementById('loading-text').innerText = "Loading Admin ERP...";
-        else if (isStockiest) document.getElementById('loading-text').innerText = "Loading Stockiest Portal...";
-        else document.getElementById('loading-text').innerText = "Loading Read-Only View...";
+        try {
+            // 🌟 1. FIND THE USER'S STORE (TENANT ID)
+            const userDoc = await db.collection("users").doc(userEmail).get();
+            if (!userDoc.exists) {
+                auth.signOut();
+                throw new Error("Access Denied: Your email is not assigned to a store. Contact support.");
+            }
+            
+            const userData = userDoc.data();
+            currentUserTenantId = userData.tenantId;
+            isAdmin = userData.role === 'admin';
+            isStockiest = userData.role === 'stockiest';
+            
+            // 🌟 2. FETCH STORE PROFILE & CHECK LICENSE
+            document.getElementById('loading-text').innerText = "Loading Store Settings...";
+            const tenantDoc = await db.collection("tenants").doc(currentUserTenantId).get();
+            if (!tenantDoc.exists) {
+                auth.signOut();
+                throw new Error("Critical Error: Store profile not found in database.");
+            }
+            
+            currentTenantProfile = tenantDoc.data();
+            
+            if (currentTenantProfile.subscriptionStatus !== "active") {
+                auth.signOut();
+                throw new Error("Your store's subscription is inactive or expired. Please contact support to renew.");
+            }
+            
+            // 🌟 3. APPLY WHITE-LABEL UI CHANGES
+            applyTenantUI(currentTenantProfile);
+            applyRolePermissions();
+            
+            // 🌟 4. FETCH DATA SPECIFIC TO THIS STORE ONLY
+            document.getElementById('loading-text').innerText = `Loading ${currentTenantProfile.storeName} Data...`;
+            await fetchCloudData();
+            
+        } catch (error) {
+            console.error("Login Error:", error);
+            document.getElementById('loading-overlay').style.display = 'none';
+            showCustomAlert(error.message, "Authentication Failed", "🚫");
+        }
         
-        applyRolePermissions();
-        fetchCloudData();
-        
-        exitConfirmed = false;
     } else {
+        // WIPE MEMORY ON LOGOUT
+        currentUserTenantId = null;
+        currentTenantProfile = {};
+        appData = { inventory: [], customers: [], history: [], purchaseOrders: [], lastInvoiceNum: 0, lastPoNum: 0 };
+        isAdmin = false; isStockiest = false;
+        
         document.body.classList.remove('auth-mode'); 
         document.body.classList.add('login-mode');
         
@@ -31,6 +70,15 @@ auth.onAuthStateChanged(user => {
         document.getElementById('screen-login').classList.add('active');
     }
 });
+
+function applyTenantUI(profile) {
+    // Dynamically update the Store Name in the Header!
+    const headerTitle = document.querySelector('#app-header .fw-bold.text-white');
+    if (headerTitle) {
+        headerTitle.innerText = profile.storeName || "Retail POS";
+    }
+    document.title = `${profile.storeName || 'Store'} - POS System`;
+}
 
 function applyRolePermissions() {
     document.getElementById('btn-new-sale').style.display = isAdmin ? 'block' : 'none';
@@ -64,30 +112,35 @@ function promptLogout() {
 }
 
 function logout() { 
-    historyPadded = false; 
     auth.signOut(); 
 }
 
 async function fetchCloudData() {
     try {
-        const metaDoc = await db.collection("metadata").doc("invoiceData").get();
+        // 🌟 Metadata is now stored per-tenant so stores don't share invoice numbers
+        const metaDoc = await db.collection("metadata").doc(currentUserTenantId).get();
         if (metaDoc.exists) { 
-            appData.lastInvoiceNum = metaDoc.data().lastNum || 22; 
-            appData.lastPoNum = metaDoc.data().lastPoNum || 5; 
+            appData.lastInvoiceNum = metaDoc.data().lastNum || 0; 
+            appData.lastPoNum = metaDoc.data().lastPoNum || 0; 
         } else { 
-            await db.collection("metadata").doc("invoiceData").set({ lastNum: 22, lastPoNum: 5 }); 
+            await db.collection("metadata").doc(currentUserTenantId).set({ lastNum: 0, lastPoNum: 0 }); 
         }
 
-        const invSnap = await db.collection("inventory").get(); 
+        // 🌟 FETCH ONLY TENANT DATA using `.where()`
+        const invSnap = await db.collection("inventory").where("tenantId", "==", currentUserTenantId).get(); 
         appData.inventory = invSnap.docs.map(doc => doc.data());
         
-        const custSnap = await db.collection("customers").get(); 
+        const custSnap = await db.collection("customers").where("tenantId", "==", currentUserTenantId).get(); 
         appData.customers = custSnap.docs.map(doc => doc.data());
         
-        const histSnap = await db.collection("history").orderBy("timestamp", "desc").get(); 
+        const histSnap = await db.collection("history")
+                                 .where("tenantId", "==", currentUserTenantId)
+                                 .orderBy("timestamp", "desc").get(); 
         appData.history = histSnap.docs.map(doc => doc.data());
         
-        const poSnap = await db.collection("purchaseOrders").orderBy("timestamp", "desc").get(); 
+        const poSnap = await db.collection("purchaseOrders")
+                               .where("tenantId", "==", currentUserTenantId)
+                               .orderBy("timestamp", "desc").get(); 
         appData.purchaseOrders = poSnap.docs.map(doc => {
             let data = doc.data();
             if (!data.status) data.status = 'converted';
@@ -95,7 +148,6 @@ async function fetchCloudData() {
         });
 
         document.getElementById('loading-overlay').style.display = 'none';
-        
         switchScreen('screen-history', false); 
         
         renderCustomerList(); 
@@ -104,58 +156,52 @@ async function fetchCloudData() {
         renderPOList(); 
         populateDropdowns();
     } catch (error) {
-        console.error("Error connecting to Firebase:", error);
-        document.getElementById('loading-text').innerText = "Database error. Please refresh.";
-        document.querySelector('.spinner').style.display = 'none';
+        console.error("Error fetching tenant data:", error);
+        document.getElementById('loading-overlay').style.display = 'none';
+        showCustomAlert("Database structure error. Please check developer console.", "Setup Error", "⚠️");
     }
 }
 
-// 🌟 NEW: Manual Sync/Refresh Logic
 async function manualRefresh() {
     document.getElementById('loading-overlay').style.display = 'flex';
     document.getElementById('loading-text').innerText = "Syncing with Cloud...";
     
     try {
-        const metaDoc = await db.collection("metadata").doc("invoiceData").get();
+        if(!currentUserTenantId) throw new Error("No active tenant");
+
+        const metaDoc = await db.collection("metadata").doc(currentUserTenantId).get();
         if (metaDoc.exists) { 
-            appData.lastInvoiceNum = metaDoc.data().lastNum || 22; 
-            appData.lastPoNum = metaDoc.data().lastPoNum || 5; 
+            appData.lastInvoiceNum = metaDoc.data().lastNum || 0; 
+            appData.lastPoNum = metaDoc.data().lastPoNum || 0; 
         }
 
-        const invSnap = await db.collection("inventory").get(); 
+        const invSnap = await db.collection("inventory").where("tenantId", "==", currentUserTenantId).get(); 
         appData.inventory = invSnap.docs.map(doc => doc.data());
         
-        const custSnap = await db.collection("customers").get(); 
+        const custSnap = await db.collection("customers").where("tenantId", "==", currentUserTenantId).get(); 
         appData.customers = custSnap.docs.map(doc => doc.data());
         
-        const histSnap = await db.collection("history").orderBy("timestamp", "desc").get(); 
+        const histSnap = await db.collection("history").where("tenantId", "==", currentUserTenantId).orderBy("timestamp", "desc").get(); 
         appData.history = histSnap.docs.map(doc => doc.data());
         
-        const poSnap = await db.collection("purchaseOrders").orderBy("timestamp", "desc").get(); 
+        const poSnap = await db.collection("purchaseOrders").where("tenantId", "==", currentUserTenantId).orderBy("timestamp", "desc").get(); 
         appData.purchaseOrders = poSnap.docs.map(doc => {
             let data = doc.data();
             if (!data.status) data.status = 'converted';
             return data;
         });
 
-        // Re-render UI elements silently
-        renderCustomerList(); 
-        renderProductList(); 
-        renderHistoryList(); 
-        renderPOList(); 
-        populateDropdowns();
+        renderCustomerList(); renderProductList(); renderHistoryList(); renderPOList(); populateDropdowns();
         
-        // If user is currently in POS, re-render their grids
         if (document.getElementById('screen-pos').classList.contains('active')) {
-            renderPOSGrid();
-            renderPOSCart();
+            renderPOSGrid(); renderPOSCart();
         }
         
         document.getElementById('loading-overlay').style.display = 'none';
-        showCustomAlert("App synced successfully. You are looking at the latest data.", "Sync Complete", "✅");
+        showCustomAlert("App synced successfully.", "Sync Complete", "✅");
     } catch (error) {
         console.error("Sync Error:", error);
         document.getElementById('loading-overlay').style.display = 'none';
-        showCustomAlert("Failed to sync data. Check your internet connection.", "Sync Error", "🔴");
+        showCustomAlert("Failed to sync data.", "Sync Error", "🔴");
     }
 }
