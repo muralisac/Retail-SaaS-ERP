@@ -1,0 +1,34 @@
+// js/1-config.js
+
+// ========================================================
+// 🔒 ROLE & ACCESS CONFIGURATION
+// Easily update Admin and Stockiest emails here
+// ========================================================
+const ADMIN_EMAILS = ["sundara.murali@gmail.com", "another.admin@gmail.com"];
+const STOCKIEST_EMAILS = ["magmganeshan@gmail.com","emailnellainaturals@gmail.com"]; 
+
+const firebaseConfig = {
+    apiKey: "AIzaSyDXjWRxYh0zHENw_9zHH9pjHUlKxhy-QVU",
+    authDomain: "geninv-9583c.firebaseapp.com",
+    projectId: "geninv-9583c",
+    storageBucket: "geninv-9583c.firebasestorage.app",
+    messagingSenderId: "1001857058399",
+    appId: "1:1001857058399:web:8b36dcce49ef0cf6747dea"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth(); 
+
+let appData = { inventory: [], customers: [], history: [], purchaseOrders: [], lastInvoiceNum: 22, lastPoNum: 5 };
+const SELLER_STATE = 33; 
+
+let currentCart = []; let editingDocId = null; let tempDocNumber = ""; let tempDocDate = "";
+let currentDocType = "invoice"; // 'invoice', 'po', or 'pos'
+let isAdmin = false; 
+let isStockiest = false;
+
+// 🌟 NEW: POS MULTI-CART STATE
+let posCarts = []; // Array of { id, name, phone, items: [] }
+let activePosCartId = null;
+let pendingPosItemAdd = null; // Remembers what item you clicked before the Customer Name popup
