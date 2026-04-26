@@ -86,6 +86,18 @@ function applyTenantUI(profile) {
     const headerTitle = document.querySelector('#app-header .fw-bold.text-white');
     if (headerTitle) headerTitle.innerText = profile.storeName || "Retail POS";
     document.title = `${profile.storeName || 'Store'} - POS System`;
+
+    const logoImg = document.getElementById('dynamic-tenant-logo');
+    if (logoImg) {
+        if (profile.logoUrl) logoImg.src = profile.logoUrl;
+
+        // 🌟 NEW: Make logo clickable for Admins to upload a new one
+        if (isAdmin) {
+            logoImg.style.cursor = "pointer";
+            logoImg.title = "Admin: Click to upload new store logo";
+            logoImg.onclick = () => document.getElementById('logo-upload-input').click();
+        }
+    }
 }
 
 function applyRolePermissions() {
@@ -172,3 +184,51 @@ async function manualRefresh() {
         showCustomAlert("Failed to sync data.", "Sync Error", "🔴");
     }
 }
+
+// ========================================================
+// 🌟 SaaS LOGO UPLOAD ENGINE
+// ========================================================
+document.addEventListener('DOMContentLoaded', () => {
+    const fileInput = document.getElementById('logo-upload-input');
+    
+    if (fileInput) {
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // Prevent massive files from slowing down the app (Limit: 2MB)
+            if (file.size > 2 * 1024 * 1024) {
+                return showCustomAlert("Please choose an image smaller than 2MB.", "File Too Large", "⚠️");
+            }
+
+            document.getElementById('loading-overlay').style.display = 'flex';
+            document.getElementById('loading-text').innerText = "Uploading Secure Logo...";
+
+            try {
+                // 1. Send the file to Firebase Storage (Name it by Tenant ID)
+                const storageRef = storage.ref(`tenant_logos/${currentUserTenantId}_logo`);
+                await storageRef.put(file);
+
+                // 2. Ask Firebase for the public, globally cached URL
+                const downloadURL = await storageRef.getDownloadURL();
+
+                // 3. Save that exact URL into the Firestore 'tenants' database
+                await db.collection("tenants").doc(currentUserTenantId).update({
+                    logoUrl: downloadURL
+                });
+
+                // 4. Instantly update the screen so the user sees it
+                document.getElementById('dynamic-tenant-logo').src = downloadURL;
+                currentTenantProfile.logoUrl = downloadURL;
+
+                showToastMessage("Store Logo updated successfully!", false);
+            } catch (error) {
+                console.error("Upload error:", error);
+                showCustomAlert("Failed to upload logo. Please check console.", "Upload Error", "🔴");
+            } finally {
+                document.getElementById('loading-overlay').style.display = 'none';
+                fileInput.value = ""; // Reset the input so they can upload again if needed
+            }
+        });
+    }
+});

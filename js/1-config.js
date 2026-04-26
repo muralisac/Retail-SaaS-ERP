@@ -14,6 +14,7 @@ const firebaseConfig = {
 // Initialize Firebase using the Compat syntax your app relies on
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+const storage = firebase.storage();
 const auth = firebase.auth(); 
 
 // ========================================================
