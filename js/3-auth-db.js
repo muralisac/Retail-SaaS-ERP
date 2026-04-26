@@ -3,6 +3,7 @@
 auth.onAuthStateChanged(async user => {
     if (user) {
         const userEmail = user.email.toLowerCase();
+        console.log("🚦 TRAFFIC COP: User logged in with email:", userEmail);
         
         document.body.classList.remove('login-mode'); 
         document.body.classList.add('auth-mode');
@@ -13,40 +14,51 @@ auth.onAuthStateChanged(async user => {
         document.getElementById('loading-text').innerText = "Identifying Store Profile...";
         
         try {
-            // 🌟 1. FIND THE USER'S STORE (TENANT ID)
+            // 🌟 1. FIND THE USER'S STORE
+            console.log("🚦 TRAFFIC COP: Checking 'users' collection for Document ID:", userEmail);
             const userDoc = await db.collection("users").doc(userEmail).get();
+            
             if (!userDoc.exists) {
+                console.error("❌ TRAFFIC COP: User document does NOT exist in Firestore!");
                 auth.signOut();
-                throw new Error("Access Denied: Your email is not assigned to a store. Contact support.");
+                throw new Error(`Access Denied: Your email (${userEmail}) is not assigned to a store. Check your Firestore 'users' collection.`);
             }
             
             const userData = userDoc.data();
             currentUserTenantId = userData.tenantId;
             isAdmin = userData.role === 'admin';
             isStockiest = userData.role === 'stockiest';
+            console.log("✅ TRAFFIC COP: User belongs to Tenant ID:", currentUserTenantId);
             
-            // 🌟 2. FETCH STORE PROFILE & CHECK LICENSE
+            // 🌟 2. FETCH STORE PROFILE
+            console.log("🚦 TRAFFIC COP: Fetching 'tenants' profile for:", currentUserTenantId);
             document.getElementById('loading-text').innerText = "Loading Store Settings...";
             const tenantDoc = await db.collection("tenants").doc(currentUserTenantId).get();
+            
             if (!tenantDoc.exists) {
+                console.error("❌ TRAFFIC COP: Tenant document does NOT exist in Firestore!");
                 auth.signOut();
                 throw new Error("Critical Error: Store profile not found in database.");
             }
             
             currentTenantProfile = tenantDoc.data();
+            console.log("✅ TRAFFIC COP: Store profile loaded:", currentTenantProfile.storeName);
             
             if (currentTenantProfile.subscriptionStatus !== "active") {
                 auth.signOut();
                 throw new Error("Your store's subscription is inactive or expired. Please contact support to renew.");
             }
             
-            // 🌟 3. APPLY WHITE-LABEL UI CHANGES
+            // 🌟 3. APPLY UI CHANGES
             applyTenantUI(currentTenantProfile);
             applyRolePermissions();
             
-            // 🌟 4. FETCH DATA SPECIFIC TO THIS STORE ONLY
+            // 🌟 4. FETCH STORE DATA
+            console.log("🚦 TRAFFIC COP: Fetching business data (Inventory, History, etc.)...");
             document.getElementById('loading-text').innerText = `Loading ${currentTenantProfile.storeName} Data...`;
             await fetchCloudData();
+            
+            console.log("🎉 TRAFFIC COP: Everything loaded successfully!");
             
         } catch (error) {
             console.error("Login Error:", error);
@@ -55,7 +67,6 @@ auth.onAuthStateChanged(async user => {
         }
         
     } else {
-        // WIPE MEMORY ON LOGOUT
         currentUserTenantId = null;
         currentTenantProfile = {};
         appData = { inventory: [], customers: [], history: [], purchaseOrders: [], lastInvoiceNum: 0, lastPoNum: 0 };
@@ -72,11 +83,8 @@ auth.onAuthStateChanged(async user => {
 });
 
 function applyTenantUI(profile) {
-    // Dynamically update the Store Name in the Header!
     const headerTitle = document.querySelector('#app-header .fw-bold.text-white');
-    if (headerTitle) {
-        headerTitle.innerText = profile.storeName || "Retail POS";
-    }
+    if (headerTitle) headerTitle.innerText = profile.storeName || "Retail POS";
     document.title = `${profile.storeName || 'Store'} - POS System`;
 }
 
@@ -87,9 +95,7 @@ function applyRolePermissions() {
     document.getElementById('btn-add-product').style.display = isAdmin ? 'block' : 'none';
     
     const navBookkeeping = document.getElementById('nav-bookkeeping');
-    if (navBookkeeping) {
-        navBookkeeping.style.display = (isAdmin || isStockiest) ? 'block' : 'none';
-    }
+    if (navBookkeeping) navBookkeeping.style.display = (isAdmin || isStockiest) ? 'block' : 'none';
 }
 
 function login() { 
@@ -111,68 +117,16 @@ function promptLogout() {
     showCustomConfirm("Are you sure you want to log out of your account?", logout, "Yes, Logout");
 }
 
-function logout() { 
-    auth.signOut(); 
-}
+function logout() { auth.signOut(); }
 
 async function fetchCloudData() {
     try {
-        // 🌟 Metadata is now stored per-tenant so stores don't share invoice numbers
         const metaDoc = await db.collection("metadata").doc(currentUserTenantId).get();
         if (metaDoc.exists) { 
             appData.lastInvoiceNum = metaDoc.data().lastNum || 0; 
             appData.lastPoNum = metaDoc.data().lastPoNum || 0; 
         } else { 
             await db.collection("metadata").doc(currentUserTenantId).set({ lastNum: 0, lastPoNum: 0 }); 
-        }
-
-        // 🌟 FETCH ONLY TENANT DATA using `.where()`
-        const invSnap = await db.collection("inventory").where("tenantId", "==", currentUserTenantId).get(); 
-        appData.inventory = invSnap.docs.map(doc => doc.data());
-        
-        const custSnap = await db.collection("customers").where("tenantId", "==", currentUserTenantId).get(); 
-        appData.customers = custSnap.docs.map(doc => doc.data());
-        
-        const histSnap = await db.collection("history")
-                                 .where("tenantId", "==", currentUserTenantId)
-                                 .orderBy("timestamp", "desc").get(); 
-        appData.history = histSnap.docs.map(doc => doc.data());
-        
-        const poSnap = await db.collection("purchaseOrders")
-                               .where("tenantId", "==", currentUserTenantId)
-                               .orderBy("timestamp", "desc").get(); 
-        appData.purchaseOrders = poSnap.docs.map(doc => {
-            let data = doc.data();
-            if (!data.status) data.status = 'converted';
-            return data;
-        });
-
-        document.getElementById('loading-overlay').style.display = 'none';
-        switchScreen('screen-history', false); 
-        
-        renderCustomerList(); 
-        renderProductList(); 
-        renderHistoryList(); 
-        renderPOList(); 
-        populateDropdowns();
-    } catch (error) {
-        console.error("Error fetching tenant data:", error);
-        document.getElementById('loading-overlay').style.display = 'none';
-        showCustomAlert("Database structure error. Please check developer console.", "Setup Error", "⚠️");
-    }
-}
-
-async function manualRefresh() {
-    document.getElementById('loading-overlay').style.display = 'flex';
-    document.getElementById('loading-text').innerText = "Syncing with Cloud...";
-    
-    try {
-        if(!currentUserTenantId) throw new Error("No active tenant");
-
-        const metaDoc = await db.collection("metadata").doc(currentUserTenantId).get();
-        if (metaDoc.exists) { 
-            appData.lastInvoiceNum = metaDoc.data().lastNum || 0; 
-            appData.lastPoNum = metaDoc.data().lastPoNum || 0; 
         }
 
         const invSnap = await db.collection("inventory").where("tenantId", "==", currentUserTenantId).get(); 
@@ -191,13 +145,26 @@ async function manualRefresh() {
             return data;
         });
 
-        renderCustomerList(); renderProductList(); renderHistoryList(); renderPOList(); populateDropdowns();
+        document.getElementById('loading-overlay').style.display = 'none';
+        switchScreen('screen-history', false); 
         
+        renderCustomerList(); renderProductList(); renderHistoryList(); renderPOList(); populateDropdowns();
+    } catch (error) {
+        console.error("Fetch Data Error:", error);
+        document.getElementById('loading-overlay').style.display = 'none';
+        showCustomAlert("Database structure error. Please check developer console.", "Setup Error", "⚠️");
+    }
+}
+
+async function manualRefresh() {
+    document.getElementById('loading-overlay').style.display = 'flex';
+    document.getElementById('loading-text').innerText = "Syncing with Cloud...";
+    try {
+        if(!currentUserTenantId) throw new Error("No active tenant");
+        await fetchCloudData();
         if (document.getElementById('screen-pos').classList.contains('active')) {
             renderPOSGrid(); renderPOSCart();
         }
-        
-        document.getElementById('loading-overlay').style.display = 'none';
         showCustomAlert("App synced successfully.", "Sync Complete", "✅");
     } catch (error) {
         console.error("Sync Error:", error);
