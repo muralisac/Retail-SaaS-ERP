@@ -242,67 +242,55 @@ async function compressImage(file) {
     });
 }
 
-async function saveProduct() { 
-    if(!isAdmin) return;
-    const id = document.getElementById('prod-id').value; 
-    const name = document.getElementById('prod-name').value.trim(); 
-    const barcode = document.getElementById('prod-barcode').value.trim(); 
-    const qrcode = document.getElementById('prod-qrcode').value.trim(); 
-    
-    // 🌟 Extract Both Prices
-    const price = parseFloat(document.getElementById('prod-price').value); 
-    const retailPrice = parseFloat(document.getElementById('prod-retail-price').value); 
-    
-    const pPrice = parseFloat(document.getElementById('prod-purchase-price').value); 
-    const gst = parseFloat(document.getElementById('prod-gst').value); 
-    const moq = parseInt(document.getElementById('prod-moq').value); 
-    const inStock = parseInt(document.getElementById('prod-stock').value) || 0;
-    
-    // 🌟 Validate Both Prices
-    if (!name || isNaN(price) || price <= 0 || isNaN(retailPrice) || retailPrice <= 0 || !barcode || !qrcode) {
-        return showCustomAlert("Please fill all mandatory fields, including WSP, Retail Price, and Codes.", "Missing Data", "⚠️"); 
-    }
+async function saveProduct() {
+    const id = document.getElementById("product-id").value || 'p' + Date.now();
+    const name = document.getElementById("product-name").value.trim();
+    const barcode = document.getElementById("product-barcode").value.trim();
+    const category = document.getElementById("product-category").value;
+    const stock = parseInt(document.getElementById("product-stock").value) || 0;
+    const price = parseFloat(document.getElementById("product-price").value) || 0;
+    const gst = parseFloat(document.getElementById("product-gst").value) || 0;
+    const hsn = document.getElementById("product-hsn").value.trim();
+    const uom = document.getElementById("product-uom").value;
 
-    document.getElementById('btn-save-product').innerText = "Compressing Images...";
-    document.getElementById('btn-save-product').disabled = true;
+    if (!name || !category) return showCustomAlert("Name and Category are required.", "Missing Info", "⚠️");
 
-    const existingProduct = appData.inventory.find(x => x.id === id);
-    let imagesArray = [];
+    const btn = document.getElementById("btn-save-product");
+    btn.innerText = "Saving..."; btn.disabled = true;
 
-    for(let i=0; i<5; i++) {
-        let fileInput = document.getElementById(`prod-img-${i}`);
-        if (fileInput && fileInput.files && fileInput.files[0]) {
-            let b64 = await compressImage(fileInput.files[0]);
-            imagesArray.push(b64);
-        } else if (existingProduct && existingProduct.images && existingProduct.images[i]) {
-            imagesArray.push(existingProduct.images[i]);
-        }
-    }
-    
-    // 🌟 Save Retail Price to Firebase
-    const p = { 
-        id: id === 'new' ? 'p' + Date.now() : id, 
-        name, barcode, qrcode, 
-        price, retailPrice, 
-        gstPercent: gst, moq, inStock, 
-        images: imagesArray 
-    }; 
-    if (!isNaN(pPrice)) p.purchasePrice = pPrice; 
-    
-    document.getElementById('btn-save-product').innerText = "Saving to Cloud...";
+    // 🌟 MULTI-TENANT FIX: Rubber-stamp the tenantId!
+    const productData = {
+        id: id,
+        tenantId: currentUserTenantId, // <-- CRITICAL SAAS ADDITION
+        name: name,
+        barcode: barcode,
+        category: category,
+        inStock: stock,
+        price: price,
+        gstPercent: gst,
+        hsn: hsn,
+        uom: uom,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    };
 
     try {
-        await db.collection("inventory").doc(p.id).set(p); 
-        if (id === 'new') appData.inventory.push(p); 
-        else { const idx = appData.inventory.findIndex(x => x.id === id); appData.inventory[idx] = p; } 
+        await db.collection("inventory").doc(id).set(productData, { merge: true });
         
-        cancelProductEdit(); 
-        renderProductList(); 
-    } catch(err) {
-        showCustomAlert("Error saving product to cloud.");
+        const existingIndex = appData.inventory.findIndex(p => p.id === id);
+        if (existingIndex > -1) {
+            appData.inventory[existingIndex] = { ...appData.inventory[existingIndex], ...productData };
+        } else {
+            appData.inventory.push(productData);
+        }
+        
+        closeProductModal();
+        renderProductList();
+        showToastMessage("Product saved successfully!", false);
+    } catch (error) {
+        console.error("Error saving product:", error);
+        showCustomAlert("Failed to save product. Check security rules.", "Error", "🔴");
     } finally {
-        document.getElementById('btn-save-product').innerText = "Save to Cloud";
-        document.getElementById('btn-save-product').disabled = false;
+        btn.innerText = "Save Product"; btn.disabled = false;
     }
 }
 

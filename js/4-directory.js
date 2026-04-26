@@ -43,18 +43,53 @@ function editCustomer(id) {
     setTimeout(() => { formContainer.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 50);
 }
 
-async function saveCustomer() { 
-    if(!isAdmin) return;
-    const id = document.getElementById('cust-id').value; const name = document.getElementById('cust-name').value; 
-    const address = document.getElementById('cust-address').value.replace(/\n/g, '<br>'); 
-    const gstin = document.getElementById('cust-gstin').value; const stateCode = parseInt(document.getElementById('cust-state').value); 
-    if (!name) return showCustomAlert("Please enter a business name."); 
-    const c = { id: id === 'new' ? 'c' + Date.now() : id, name, address, gstin, stateCode }; 
-    
-    await db.collection("customers").doc(c.id).set(c); 
-    if (id === 'new') appData.customers.push(c); 
-    else { const idx = appData.customers.findIndex(x => x.id === id); appData.customers[idx] = c; } 
-    cancelCustomerEdit(); renderCustomerList(); 
+async function saveCustomer() {
+    const id = document.getElementById("customer-id").value || 'c' + Date.now();
+    const type = document.getElementById("customer-type").value;
+    const name = document.getElementById("customer-name").value.trim();
+    const phone = document.getElementById("customer-phone").value.trim();
+    const gstin = document.getElementById("customer-gstin").value.trim() || "URP";
+    const address = document.getElementById("customer-address").value.trim();
+    const stateCode = parseInt(document.getElementById("customer-state-code").value) || 33;
+
+    if (!name || !phone) return showCustomAlert("Name and Phone are required.", "Missing Info", "⚠️");
+
+    const btn = document.getElementById("btn-save-customer");
+    btn.innerText = "Saving..."; btn.disabled = true;
+
+    // 🌟 MULTI-TENANT FIX: Rubber-stamp the tenantId!
+    const customerData = {
+        id: id,
+        tenantId: currentUserTenantId, // <-- CRITICAL SAAS ADDITION
+        type: type,
+        name: name,
+        phone: phone,
+        gstin: gstin,
+        address: address,
+        stateCode: stateCode,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    };
+
+    try {
+        await db.collection("customers").doc(id).set(customerData, { merge: true });
+        
+        const existingIndex = appData.customers.findIndex(c => c.id === id);
+        if (existingIndex > -1) {
+            appData.customers[existingIndex] = customerData;
+        } else {
+            appData.customers.push(customerData);
+        }
+        
+        closeCustomerModal();
+        renderCustomerList();
+        populateDropdowns();
+        showToastMessage("Profile saved successfully!", false);
+    } catch (error) {
+        console.error("Error saving customer:", error);
+        showCustomAlert("Failed to save profile. Check security rules.", "Error", "🔴");
+    } finally {
+        btn.innerText = "Save Profile"; btn.disabled = false;
+    }
 }
 
 function cancelCustomerEdit() { document.getElementById('customer-form-container').style.display = 'none'; document.getElementById('btn-add-customer').style.display = isAdmin ? 'block' : 'none'; }
