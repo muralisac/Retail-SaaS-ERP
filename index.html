@@ -58,6 +58,7 @@
         <div class="d-flex flex-column p-4 gap-3 flex-grow-1 overflow-y-auto">
             <button onclick="switchScreen('screen-history')" id="nav-history" class="nav-btn active">🧾 Wholesale Invoices</button>
             <button onclick="openPOSScreen()" id="nav-pos" class="nav-btn" style="color: #800000; border-color: #800000;">🛒 POS Register</button>
+            <button onclick="switchScreen('screen-super-admin')" id="nav-super-admin" class="nav-btn mt-3" style="display: none; color: #dc2626; border-color: #dc2626; background: #fee2e2;">👑 Super Admin</button>
             <button onclick="switchScreen('screen-po-history')" id="nav-po-history" class="nav-btn">📦 Purchase Orders</button>
             <button onclick="switchScreen('screen-customers')" id="nav-customers" class="nav-btn">👥 Business Directory</button>
             <button onclick="switchScreen('screen-products')" id="nav-products" class="nav-btn">📋 Master Inventory</button>
@@ -113,6 +114,37 @@
                 <p class="mb-0 text-dark fw-medium font-13" id="view-reason-text" style="white-space: pre-wrap;"></p>
             </div>
             <button class="btn btn-primary w-100 shadow-sm fw-bold" onclick="closeViewReasonModal()">Close</button>
+        </div>
+    </div>
+    
+    <div id="screen-super-admin" class="screen panel">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3 class="fw-bold m-0" style="color: #dc2626;">👑 Master Dashboard</h3>
+        </div>
+        
+        <div class="bg-light p-4 rounded-4 border" style="border-color: #e2e8f0 !important;">
+            <h5 class="fw-bold mb-3 pb-2 border-bottom">Onboard New SaaS Client</h5>
+            
+            <div class="mb-3">
+                <label class="form-label fw-bold">Client Store Name</label>
+                <input type="text" id="sa-store-name" class="form-control form-control-lg" placeholder="e.g., Fresh Organic Mart">
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label fw-bold">Client Admin Email</label>
+                <input type="email" id="sa-admin-email" class="form-control form-control-lg" placeholder="client@gmail.com">
+                <div class="form-text text-success fw-bold">Tip: Use a Gmail address so they can use 1-click Google Login!</div>
+            </div>
+            
+            <div class="mb-4">
+                <label class="form-label fw-bold">Unique Tenant ID (No spaces)</label>
+                <div class="input-group input-group-lg">
+                    <span class="input-group-text bg-white text-muted">tenant_</span>
+                    <input type="text" id="sa-tenant-id" class="form-control" placeholder="freshmart">
+                </div>
+            </div>
+            
+            <button class="btn btn-danger w-100 btn-lg fw-bold shadow-sm" onclick="provisionNewClient()">🚀 Provision Store & Whitelist User</button>
         </div>
     </div>
 

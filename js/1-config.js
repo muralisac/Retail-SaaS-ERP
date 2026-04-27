@@ -20,6 +20,7 @@ const auth = firebase.auth();
 // ========================================================
 // 🌟 SaaS GLOBAL STATE (Multi-Tenant)
 // ========================================================
+let currentUserEmail = null; //hide/show the God Mode button to trak who logged in.
 let currentUserTenantId = null; // Stores the active store ID (e.g., 'tenant_oruvidhai')
 let currentTenantProfile = {};  // Stores the custom store name, logo, etc.
 

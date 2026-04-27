@@ -2,7 +2,8 @@
 
 auth.onAuthStateChanged(async user => {
     if (user) {
-        const userEmail = user.email.toLowerCase();
+        currentUserEmail = user.email.toLowerCase();
+		const userEmail = user.email.toLowerCase();
         console.log("🚦 TRAFFIC COP: User logged in with email:", userEmail);
         
         document.body.classList.remove('login-mode'); 
@@ -108,6 +109,12 @@ function applyRolePermissions() {
     
     const navBookkeeping = document.getElementById('nav-bookkeeping');
     if (navBookkeeping) navBookkeeping.style.display = (isAdmin || isStockiest) ? 'block' : 'none';
+
+    // 👑 NEW: Show Super Admin button ONLY to the Master Admin
+    const superAdminBtn = document.getElementById('nav-super-admin');
+    if (superAdminBtn) {
+        superAdminBtn.style.display = (currentUserEmail === 'sundara.murali@gmail.com') ? 'block' : 'none';
+    }
 }
 
 function login() { 
@@ -232,3 +239,56 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+// ========================================================
+// 👑 SUPER ADMIN: PROVISION NEW CLIENT
+// ========================================================
+async function provisionNewClient() {
+    const storeName = document.getElementById('sa-store-name').value.trim();
+    const adminEmail = document.getElementById('sa-admin-email').value.trim().toLowerCase();
+    const tenantSuffix = document.getElementById('sa-tenant-id').value.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    if (!storeName || !adminEmail || !tenantSuffix) {
+        return showCustomAlert("Please fill out all fields to provision a store.", "Missing Info", "⚠️");
+    }
+
+    const newTenantId = "tenant_" + tenantSuffix;
+
+    document.getElementById('loading-overlay').style.display = 'flex';
+    document.getElementById('loading-text').innerText = "Building Store Infrastructure...";
+
+    try {
+        // 1. Create the new Store Profile
+        await db.collection("tenants").doc(newTenantId).set({
+            storeName: storeName,
+            subscriptionStatus: "active",
+            logoUrl: "", // Blank initially
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        // 2. Whitelist the Client's Admin Email
+        await db.collection("users").doc(adminEmail).set({
+            role: "admin",
+            tenantId: newTenantId
+        });
+
+        // 3. Initialize Invoice Counters
+        await db.collection("metadata").doc(newTenantId).set({ 
+            lastNum: 0, 
+            lastPoNum: 0 
+        });
+
+        document.getElementById('loading-overlay').style.display = 'none';
+        showCustomAlert(`Successfully provisioned "${storeName}"! Tell the client to visit your site and click 'Continue with Google' using ${adminEmail}.`, "Client Onboarded", "👑");
+
+        // Clear the form
+        document.getElementById('sa-store-name').value = "";
+        document.getElementById('sa-admin-email').value = "";
+        document.getElementById('sa-tenant-id').value = "";
+
+    } catch (error) {
+        console.error("Provisioning Error:", error);
+        document.getElementById('loading-overlay').style.display = 'none';
+        showCustomAlert("Failed to provision store. Check console for details.", "Error", "🔴");
+    }
+}
