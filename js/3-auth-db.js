@@ -83,7 +83,7 @@ auth.onAuthStateChanged(async user => {
     }
 });
 
-function applyTenantUI(profile) {
+function function applyTenantUI(profile) {
     const headerTitle = document.querySelector('#app-header .fw-bold.text-white');
     if (headerTitle) headerTitle.innerText = profile.storeName || "Retail POS";
     document.title = `${profile.storeName || 'Store'} - POS System`;
@@ -91,13 +91,11 @@ function applyTenantUI(profile) {
     const logoImg = document.getElementById('dynamic-tenant-logo');
     if (logoImg) {
         if (profile.logoUrl) logoImg.src = profile.logoUrl;
-
-        // 🌟 NEW: Make logo clickable for Admins to upload a new one
-        if (isAdmin) {
-            logoImg.style.cursor = "pointer";
-            logoImg.title = "Admin: Click to upload new store logo";
-            logoImg.onclick = () => document.getElementById('logo-upload-input').click();
-        }
+        
+        // Removed the clickable upload logic from here!
+        logoImg.style.cursor = "default";
+        logoImg.onclick = null;
+        logoImg.title = "";
     }
 }
 
@@ -115,6 +113,10 @@ function applyRolePermissions() {
     if (superAdminBtn) {
         superAdminBtn.style.display = (currentUserEmail === 'sundara.murali@gmail.com') ? 'block' : 'none';
     }
+	
+	// Unhide Settings for Store Admins
+    const navSettings = document.getElementById('nav-settings');
+    if (navSettings) navSettings.style.display = isAdmin ? 'block' : 'none';
 }
 
 function login() { 
