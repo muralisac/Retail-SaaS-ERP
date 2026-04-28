@@ -83,7 +83,7 @@ auth.onAuthStateChanged(async user => {
     }
 });
 
-function function applyTenantUI(profile) {
+function applyTenantUI(profile) {
     const headerTitle = document.querySelector('#app-header .fw-bold.text-white');
     if (headerTitle) headerTitle.innerText = profile.storeName || "Retail POS";
     document.title = `${profile.storeName || 'Store'} - POS System`;
@@ -91,8 +91,6 @@ function function applyTenantUI(profile) {
     const logoImg = document.getElementById('dynamic-tenant-logo');
     if (logoImg) {
         if (profile.logoUrl) logoImg.src = profile.logoUrl;
-        
-        // Removed the clickable upload logic from here!
         logoImg.style.cursor = "default";
         logoImg.onclick = null;
         logoImg.title = "";
@@ -108,15 +106,15 @@ function applyRolePermissions() {
     const navBookkeeping = document.getElementById('nav-bookkeeping');
     if (navBookkeeping) navBookkeeping.style.display = (isAdmin || isStockiest) ? 'block' : 'none';
 
-    // 👑 NEW: Show Super Admin button ONLY to the Master Admin
+    // Settings Button
+    const navSettings = document.getElementById('nav-settings');
+    if (navSettings) navSettings.style.display = isAdmin ? 'block' : 'none';
+
+    // Super Admin Button
     const superAdminBtn = document.getElementById('nav-super-admin');
     if (superAdminBtn) {
         superAdminBtn.style.display = (currentUserEmail === 'sundara.murali@gmail.com') ? 'block' : 'none';
     }
-	
-	// Unhide Settings for Store Admins
-    const navSettings = document.getElementById('nav-settings');
-    if (navSettings) navSettings.style.display = isAdmin ? 'block' : 'none';
 }
 
 function login() { 
